@@ -52,7 +52,7 @@ Our method require the same computational cost as the baseline method, thus is m
 
 ## Adversarial Testing
 
-We apply codes for testing the adversarial robustness of trained models. Now the provided attacks include [FGSM](https://arxiv.org/abs/1412.6572), [BIM](https://arxiv.org/pdf/1607.02533.pdf), [PGD](arxiv.org/abs/1706.06083) and [MIM](https://arxiv.org/pdf/1710.06081.pdf); The attacks could be targeted or untargeted. More attacks can be easily implemented from Cleverhans.
+We apply codes for testing the adversarial robustness of trained models. Now the provided attacks include [FGSM](https://arxiv.org/abs/1412.6572), [BIM](https://arxiv.org/pdf/1607.02533.pdf), [PGD](https://arxiv.org/abs/1706.06083) and [MIM](https://arxiv.org/pdf/1710.06081.pdf); The attacks could be targeted or untargeted. More attacks can be easily implemented from Cleverhans.
 
 ### Test baseline
 
