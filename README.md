@@ -6,6 +6,10 @@ Technical details are specified in:
 
 Tianyu Pang, Chao Du and Jun Zhu
 
+[Rethinking Softmax Cross-Entropy Loss for Adversarial Robustness](https://arxiv.org/pdf/1905.10626.pdf) (arXiv preprint 2019)
+
+Tianyu Pang, Kun Xu, Yinpeng Dong, Chao Du, Ning Chen and Jun Zhu
+
 ## Environment settings
 
 The codes are mainly implemented by [Keras](https://keras.io/) and [Tensorflow](https://github.com/tensorflow), where the adversarial attacks are implement from [Cleverhans](https://github.com/tensorflow/cleverhans)
