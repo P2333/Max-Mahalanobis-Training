@@ -10,91 +10,90 @@ Tianyu Pang, Chao Du and Jun Zhu
 
 Tianyu Pang, Kun Xu, Yinpeng Dong, Chao Du, Ning Chen and Jun Zhu
 
-## Environment settings
+## Environment settings and libraries we used in our experiments
 
-The codes are mainly implemented by [Keras](https://keras.io/) and [Tensorflow](https://github.com/tensorflow), where the adversarial attacks are implement from [Cleverhans](https://github.com/tensorflow/cleverhans)
-
+This project is tested under the following environment settings:
 - OS: Ubuntu 16.04.3
+- GPU: Geforce 1080 Ti or Tesla P100
+- Cuda: 9.0, Cudnn: v7.03
 - Python: 2.7.12
-- Cleverhans: 2.1.0
+- cleverhans: 2.1.0
 - Keras: 2.2.4
-- Tensorflow-gpu: 1.9.0
+- tensorflow-gpu: 1.9.0
 
-## Training
+We also thank the authors of [keras-resnet](https://github.com/raghakot/keras-resnet) for providing their code. Our codes are widely adapted from their repositories. For convenience, we provide the *requirement.txt* file to install the virtualenv that is sufficient run the codes.
 
-We provide codes for training [Resnets](https://arxiv.org/abs/1512.03385) on MNIST, CIFAR-10 and CIFAR-100.
+In the following, we first provide the codes for training. After that, the evaluation codes, such as attacking, are provided.
 
-### Baseline
+## Training codes
 
-The baseline refers to the traditional softmax cross-entropy training. Here we show the command for training a Resnet-32v2 on CIFAR-10:
+### Standard training with the SCE loss
+
+Let `dataset` be `mnist`, `cifar10` or `cifar100`, the command for training models with the SCE loss is
 ```shell
-python train.py --batch_size=50 \
-                --dataset='cifar10' \
-                --optimizer='Adam' \
-                --lr=0.001 \
-                --version=2 \
-                --use_MMLDA=False \
-                --use_BN=True
+python train.py --batch_size=50 --dataset=[dataset] --optimizer='Adam' --lr=0.001 --version=2 --use_MMLDA=False --use_BN=True --use_dense=True --use_leaky=False
 ```
-There are many other tf.FLAGS that can be tuned to test different models and training method, etc.
+Here the initial learning rate is `0.001`, the optimizer is `Adam` and we use the `Resnet-v2` architecture proposed by [He et al. (2016)](https://arxiv.org/abs/1603.05027). The training epoch on MNIST is set as 40, on CIFAR-10 and CIFAR-100 is set as 180.
 
-### MMLDA
-
-To use our method, we also show the command for training a Resnet-32v2 on CIFAR-10:
+### Standard training with the MMC loss
+Similarly, let `dataset` be `mnist`, `cifar10` or `cifar100`, the command for training models with the MMC loss is
 ```shell
-python train.py --batch_size=50 \
-                --mean_var=100 \
-                --dataset='cifar10' \
-                --optimizer='Adam' \
-                --lr=0.001 \
-                --version=2 \
-                --use_MMLDA=True \
-                --use_ball=True \
-                --use_BN=True
+python train.py --batch_size=50 --mean_var=10 --dataset=[dataset] -optimizer='Adam' --lr=0.001 --version=2 --use_MMLDA=True --use_ball=True --use_BN=True --use_random=False --use_dense=True --use_leaky=False
 ```
-Our method require the same computational cost as the baseline method, thus is much faster than adversarial training. Here the mean_var is chosed as 100, more explaination about this value can found in Figure 2 in the paper.
+Here the basic training setting, e.g., learning rate and optimizer are the same as them for the SCE loss. The `meanvar` parameter is the $C_{MM}$ of the MMC loss in the paper. When the bool flag `use_ball` is False, the command run the training with the MMLDA loss.
 
-## Adversarial Testing
-
-We apply codes for testing the adversarial robustness of trained models. Now the provided attacks include [FGSM](https://arxiv.org/abs/1412.6572), [BIM](https://arxiv.org/pdf/1607.02533.pdf), [PGD](https://arxiv.org/abs/1706.06083) and [MIM](https://arxiv.org/pdf/1710.06081.pdf); The attacks could be targeted or untargeted. More attacks can be easily implemented from Cleverhans.
-
-### Test baseline
-
-The command for test the robustness of baseline model under 20iter targeted PGD attacks is:
+### Adversarial training with the SCE loss
+For the adversarial training, we apply the most widely studied PGD-based method proposed by [Madry et al. (2017)](https://arxiv.org/abs/1706.06083).
 ```shell
-python -u advtest_iterative.py --batch_size=50 \
-                               --attack_method='MadryEtAl' \
-                               --attack_method_for_advtrain=None \
-                               --dataset='cifar10' \
-                               --target=True \
-                               --num_iter=20 \
-                               --use_ball=False \
-                               --use_MMLDA=False \
-                               --use_advtrain=False \
-                               --epoch=180 \
-                               --use_BN=True \
-                               --normalize_output_for_ball=True
+python advtrain.py --batch_size=50 --dataset=[dataset] --optimizer='Adam' --lr=0.001 --version=2 --adv_ratio=1.0 --use_MMLDA=False --use_ball=False --use_target=False --attack_method='MadryEtAl' --use_BN=True --use_random=False
+```
+Here the `adv_ratio` is set as 1, which means we only use adversarial examples in the training phase as suggested in previous work. The bool flag `use_target` indicates whether uses targeted attack or untargeted attack when crafting adversarial examples for training.
+
+### Adversarial training with the MMC loss
+The adversarial training command is similar for the MMC loss
+```shell
+python advtrain.py --batch_size=50 --mean_var=10 --dataset=[dataset] --optimizer='Adam' --lr=0.001 --version=2 --adv_ratio=1.0 --use_MMLDA=True --use_ball=True --use_target=True --attack_method='MadryEtAl' --use_BN=True --use_random=False
 ```
 
-### Test MMLDA
+## Evaluation codes
 
-The command for test the robustness of MMLDA model with mean_var=100 under 20iter targeted PGD attacks is:
+### White-box L-infinity attack (PGD)
+In this setting, the attacking methods are usually iterative-based. For examples, the command of applying targeted PGD-10 to evade the models trained by the SCE loss is
 ```shell
-python -u advtest_iterative.py --mean_var=100\
-                               --batch_size=50 \
-                               --attack_method='MadryEtAl' \
-                               --attack_method_for_advtrain=None \
-                               --dataset='cifar10' \
-                               --target=True \
-                               --num_iter=7 \
-                               --use_ball=True \
-                               --use_MMLDA=True \
-                               --use_advtrain=False \
-                               --epoch=180 \
-                               --use_BN=True \
-                               --normalize_output_for_ball=True
+python advtest_iterative.py --batch_size=50 --attack_method='MadryEtAl' --attack_method_for_advtrain=None --dataset=[dataset] --target=True --num_iter=10 --use_ball=False --use_MMLDA=False --use_advtrain=False --epoch=[epoch] --use_BN=True --normalize_output_for_ball=True --use_random=False --use_target=False
 ```
+Here `attack_method` could be 'MadryEtAl' (PGD), 'FastGradientMethod' (FGSM), 'MomentumIterativeMethod' (MIM) and 'BasicIterativeMethod' (BIM). The `target` indicates whether use targeted or untargeted attack; `num_iter` is the iteration steps of the performed attacks; `epoch` is the epoch of the checkpoint to load; `normalize_output_for_ball` is a bool flag to decide whether apply a softmax function to return predictions in the inference phase.
 
-## Checkpoints
+When attacking the adversarially trained models, we should set the `use_advtrain` as True, and the `attack_method_for_advtrain` to be 'MadryEtAl' since we use the PGD-based adversarial training methods. The `use_target` is set the same as in the training codes. For examples, the command of applying untargeted PGD to evade the models adversarially trained by the MMC loss is
+```shell
+python advtest_iterative.py --mean_var=10 --batch_size=50 --attack_method='MadryEtAl' --attack_method_for_advtrain='MadryEtAl' --dataset=[dataset] --target=False --num_iter=10 --use_ball=True --use_MMLDA=True --use_advtrain=True --epoch=[epoch] --use_BN=True --normalize_output_for_ball=False --use_random=False --adv_ratio=1.0 --use_target=False
+```
+Note that here we set `normalize_output_for_ball` be False to perform an adaptive attacks.
 
-We provide the checkpoints that can be directly test by the demo commands above. The [baseline model checkpoints](http://ml.cs.tsinghua.edu.cn/~tianyu/MMLDA/resnet32v2_Adam_lr0.001_batchsize50_withBN.zip) and the [MMLDA model checkpoints](http://ml.cs.tsinghua.edu.cn/~tianyu/MMLDA/resnet32v2_meanvar100.0_Adam_lr0.001_batchsize50_withBN.zip) includes checkpoints from 160 epochs to 180 epochs. These checkpoints should be in the dir `trained_models/cifar10/`.
+### White-box L-2 attack (C&W)
+In this setting, the attacking methods are usually optimization-based. In the C&W method, there is a binary search mechanism for the constant parameter to find sucessful adversarial examples with minimal distortion. The command below gives an example of applying targeted C&W attack on the models trained by the MMC loss. 
+```shell
+python advtest_others.py --mean_var=10 --batch_size=50 --attack_method='CarliniWagnerL2' --attack_method_for_advtrain=None --dataset=[dataset] --target=True --use_ball=True --use_MMLDA=True --use_advtrain=False --adv_ratio=1.0 --use_target=False --epoch=[epoch] --use_BN=True --normalize_output_for_ball=False --use_random=False --use_dense=True --use_leaky=False --CW_confidence=0.
+```
+The specific parameter settings of the C&W attack can be found in the code. The `attack_method` could also be 'ElasticNetMethod' to perform EAD attack.
+
+### Black-box transfer-based attack (MIM & PGD)
+For the black-box transfer-based setting, we apply the MIM and PGD attacks. An example command using the untargeted PGD-10 attack is shown below
+```shell
+python advtest_iterative_blackbox.py --batch_size=50 --optimizer='Adam' --attack_method='MadryEtAl' --dataset=[dataset] --target=False --num_iter=10 --use_random=False --use_dense=True --use_leaky=False --epoch=[epoch] --use_BN=True --model_1='AT-MMC-100' --model_2='SCE'
+```
+Here `model_1` is the substitute model used to craft adversarial examples, `model_2` is the original model used to classify these adversarial examples. These two parameters could be `SCE`, `MMC-10`, `MMC-100`, `AT-SCE`, `AT-MMC-10`, `AT-MMC-100`. The `epoch` here is the training epoch of checkpoint for both the model_1 and model_2.
+
+### Black-box gradient-free attack (SPSA)
+For the black-box gradient-free setting, we apply the SPSA attack. This attacks is based on numerical approximations of the model gradients, and can evade the defenses that based on gradient masking. An example command is given below for untargeted SPSA-10 attack on the models trained by the MMC loss.
+```shell
+python advtest_others.py --mean_var=10 --batch_size=50 --attack_method='SPSA' --attack_method_for_advtrain=None --dataset=[dataset] --target=False --use_ball=True --use_MMLDA=True --use_advtrain=False --adv_ratio=1.0 --use_target=False --epoch=[epoch] --use_BN=True -normalize_output_for_ball=False --use_random=False --use_dense=True --use_leaky=False --SPSA_epsilon=8
+```
+More details of the parameter settings can be found in the code.
+
+### General-purpose attack
+To further test the robustness of our method, we investigate the general-purpose attacks. We add the Gaussian random noise and random rotation transformation on the input images to perform the attacks. An example command is
+```shell
+python advtest_simple_transform.py --mean_var=10 --batch_size=50  --attack_method='Rotation' --attack_method_for_advtrain='MadryEtAl' --dataset=[dataset] --use_ball=True --use_MMLDA=True --use_advtrain=True --epoch=[epoch] --adv_ratio=1.0 --use_target=False --normalize_output_for_ball=False
+```
+The `attack_method` could be 'Rotation' for rotation transformation or 'Gaussian' for Gaussian noise. Detailed parameter settings are provided in the code.
