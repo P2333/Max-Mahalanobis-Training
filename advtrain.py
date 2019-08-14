@@ -17,32 +17,30 @@ from scipy.io import loadmat
 import math
 from utils.model import resnet_v1, resnet_v2
 
+from utils.keras_wraper_ensemble import KerasModelWrapper
+import cleverhans.attacks as attacks
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_integer('batch_size', 64, '')
-tf.app.flags.DEFINE_float('mean_var', 10, 'parameter in MMLDA')
+tf.app.flags.DEFINE_integer('batch_size', 50, '')
+tf.app.flags.DEFINE_integer('mean_var', 10, 'parameter in MMLDA')
 tf.app.flags.DEFINE_string('optimizer', 'Adam', '')
-tf.app.flags.DEFINE_integer('version', 1, '')
+tf.app.flags.DEFINE_integer('version', 2, '')
 tf.app.flags.DEFINE_float('lr', 0.001, 'initial lr')
-tf.app.flags.DEFINE_integer('feature_dim', 256, '')
-tf.app.flags.DEFINE_bool('is_2d_demo', False, 'whether is a 2d demo on MNIST')
-tf.app.flags.DEFINE_bool('use_ball', True, 'whether use ball loss or softmax')
 tf.app.flags.DEFINE_bool('use_MMLDA', True, 'whether use MMLDA or softmax')
+tf.app.flags.DEFINE_bool('use_ball', True, 'whether use ball loss or softmax loss')
+tf.app.flags.DEFINE_float('adv_ratio', 1.0, 'the ratio of adversarial examples in each mini-batch')
+tf.app.flags.DEFINE_string('attack_method', 'MadryEtAl', 'the attack used to craft adversarial examples for adv training')
+tf.app.flags.DEFINE_bool('use_target', False, 'whether use target attack or untarget attack for adversarial training')
 tf.app.flags.DEFINE_bool('use_BN', True, 'whether use batch normalization in the network')
 tf.app.flags.DEFINE_bool('use_random', False, 'whether use random center or MMLDA center in the network')
-tf.app.flags.DEFINE_bool('use_dense', True, 'whether use extra dense layer in the network')
-tf.app.flags.DEFINE_bool('use_leaky', False, 'whether use leaky relu in the network')
 tf.app.flags.DEFINE_string('dataset', 'mnist', '')
 
-
-
-random_seed = '' # '' or '2' or '3'
 # Load the dataset
 if FLAGS.dataset=='mnist':
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train = np.repeat(np.expand_dims(x_train, axis=3), 3, axis=3)
-    x_test = np.repeat(np.expand_dims(x_test, axis=3), 3, axis=3)
+    x_train = np.expand_dims(x_train, axis=3)
+    x_test = np.expand_dims(x_test, axis=3)
     epochs = 50
     num_class = 10
     epochs_inter = [30,40]
@@ -59,11 +57,11 @@ elif FLAGS.dataset=='cifar100':
 else:
     print('Unknown dataset')
 
-
-# Training parameters
+# These parameters are usually fixed
 subtract_pixel_mean = True
 version = FLAGS.version # Model version
 n = 5 # n=5 for resnet-32 v1
+
 
 # Computed depth from supplied model parameter n
 if version == 1:
@@ -71,34 +69,18 @@ if version == 1:
     feature_dim = 64
 elif version == 2:
     depth = n * 9 + 2
-    feature_dim = FLAGS.feature_dim
+    feature_dim = 256
 
 if FLAGS.use_random==True:
     name_random = '_random'
-    random_seed = '2'
 else:
     name_random = ''
 
-if FLAGS.use_leaky==True:
-    name_leaky = '_withleaky'
-else:
-    name_leaky = ''
+#Load means in MMLDA
+kernel_dict = loadmat('kernel_paras/meanvar1_featuredim'+str(feature_dim)+'_class'+str(num_class)+name_random+'.mat')
+mean_logits = kernel_dict['mean_logits'] #num_class X num_dense
+mean_logits = FLAGS.mean_var * tf.constant(mean_logits,dtype=tf.float32)
 
-if FLAGS.use_dense==True:
-    name_dense = ''
-else:
-    name_dense = '_nodense'
-
-if FLAGS.is_2d_demo==True:
-    is_2d_demo = '_demoMNIST'
-else:
-    is_2d_demo = ''
-
-
-#Load centers in MMC
-kernel_dict = loadmat('kernel_paras/meanvar1_featuredim'+str(feature_dim)+'_class'+str(num_class)+'.mat')
-mean_logits_np = kernel_dict['mean_logits'] #num_class X num_dense
-mean_logits = FLAGS.mean_var * tf.constant(mean_logits_np,dtype=tf.float32)
 
 # Input image dimensions.
 input_shape = x_train.shape[1:]
@@ -108,10 +90,14 @@ x_train = x_train.astype('float32') / 255
 x_test = x_test.astype('float32') / 255
 
 # If subtract pixel mean is enabled
+clip_min = 0.0
+clip_max = 1.0
 if subtract_pixel_mean:
     x_train_mean = np.mean(x_train, axis=0)
     x_train -= x_train_mean
     x_test -= x_train_mean
+    clip_min -= x_train_mean
+    clip_max -= x_train_mean
 
 # Convert class vectors to binary class matrices.
 y_train = keras.utils.to_categorical(y_train, num_class)
@@ -134,6 +120,7 @@ def MMLDA_layer(x, means=mean_logits, num_class=num_class, use_ball=FLAGS.use_ba
         logits = logits - tf.log(tf.reduce_sum(tf.exp(logits), axis=-1, keepdims=True)) #Avoid numerical rounding
         return logits
 
+
 def lr_schedule(epoch):
     lr = FLAGS.lr
     if epoch > epochs_inter[1]:
@@ -143,15 +130,14 @@ def lr_schedule(epoch):
     print('Learning rate: ', lr)
     return lr
 
+
 model_input = Input(shape=input_shape)
 
 #dim of logtis is batchsize x dim_means
 if version == 2:
-    original_model,_,_,_,final_features = resnet_v2(input=model_input, depth=depth, num_classes=num_class, num_dims=feature_dim, \
-                                                    use_BN=FLAGS.use_BN, use_dense=FLAGS.use_dense, use_leaky=FLAGS.use_leaky)
+    original_model,_,_,_,final_features = resnet_v2(input=model_input, depth=depth, num_classes=num_class, use_BN=FLAGS.use_BN)
 else:
-    original_model,_,_,_,final_features = resnet_v1(input=model_input, depth=depth, num_classes=num_class, \
-                                                    use_BN=FLAGS.use_BN, use_dense=FLAGS.use_dense, use_leaky=FLAGS.use_leaky)
+    original_model,_,_,_,final_features = resnet_v1(input=model_input, depth=depth, num_classes=num_class, use_BN=FLAGS.use_BN)
 
 if FLAGS.use_BN==True:
     BN_name = '_withBN'
@@ -160,8 +146,18 @@ else:
     BN_name = '_noBN'
     print('Do not use BN in the model')
 
+#Whether use target attack for adversarial training
+if FLAGS.use_target==False:
+    is_target = ''
+    y_target = None
+else:
+    is_target = 'target'
+    y_target = tf.multinomial(tf.ones((FLAGS.batch_size,num_class)),1) #batch_size x 1
+    y_target = tf.one_hot(tf.reshape(y_target,(FLAGS.batch_size,)),num_class) #batch_size x num_class
+
+
 if FLAGS.use_MMLDA==True:
-    print('Using MM Training Scheme')
+    print('Using MMT Training Scheme')
     new_layer = Lambda(MMLDA_layer)
     predictions = new_layer(final_features)
     model = Model(input=model_input, output=predictions)
@@ -170,29 +166,70 @@ if FLAGS.use_MMLDA==True:
     if FLAGS.use_ball==False:
         print('Using softmax function (MMLDA)')
         use_ball_='_softmax'
-    filepath_dir = 'trained_models/'+FLAGS.dataset+'/resnet32v'+str(version)+'_meanvar'+str(FLAGS.mean_var) \
+    filepath_dir = 'advtrained_models/'+FLAGS.dataset+'/resnet32v'+str(version)+'_meanvar'+str(FLAGS.mean_var) \
                                                                 +'_'+FLAGS.optimizer \
                                                                 +'_lr'+str(FLAGS.lr) \
                                                                 +'_batchsize'+str(FLAGS.batch_size) \
-                                                                +BN_name+name_leaky+name_dense+name_random+random_seed+use_ball_+is_2d_demo
+                                                                +'_'+is_target+FLAGS.attack_method \
+                                                                +'_advratio'+str(FLAGS.adv_ratio)+BN_name+name_random \
+                                                                +use_ball_
 else:
     print('Using softmax loss')
     model = original_model
     train_loss = keras.losses.categorical_crossentropy
-    filepath_dir = 'trained_models/'+FLAGS.dataset+'/resnet32v'+str(version)+'_'+FLAGS.optimizer \
+    filepath_dir = 'advtrained_models/'+FLAGS.dataset+'/resnet32v'+str(version)+'_'+FLAGS.optimizer \
                                                             +'_lr'+str(FLAGS.lr) \
-                                                            +'_batchsize'+str(FLAGS.batch_size)+BN_name+name_leaky
+                                                            +'_batchsize'+str(FLAGS.batch_size)+'_'+is_target+FLAGS.attack_method+'_advratio'+str(FLAGS.adv_ratio)+BN_name
 
-if FLAGS.optimizer=='Adam':
-    model.compile(
-            loss=train_loss,
-            optimizer=Adam(lr=lr_schedule(0)),
-            metrics=['accuracy'])
-elif FLAGS.optimizer=='mom':
-    model.compile(
-            loss=train_loss,
-            optimizer=SGD(lr=lr_schedule(0), momentum=0.9),
-            metrics=['accuracy'])
+wrap_ensemble = KerasModelWrapper(model, num_class=num_class)
+
+
+eps = 8. / 256.
+if FLAGS.attack_method == 'MadryEtAl':
+    print('apply '+is_target+'PGD'+' for advtrain')
+    att = attacks.MadryEtAl(wrap_ensemble)
+    att_params = {
+        'eps': eps,
+        #'eps_iter': 3.*eps/10.,
+        'eps_iter': 2. / 256.,
+        'clip_min': clip_min,
+        'clip_max': clip_max,
+        'nb_iter': 10,
+        'y_target': y_target
+    }
+elif FLAGS.attack_method == 'MomentumIterativeMethod':
+    print('apply '+is_target+'MIM'+' for advtrain')
+    att = attacks.MomentumIterativeMethod(wrap_ensemble)
+    att_params = {
+        'eps': eps,
+        #'eps_iter': 3.*eps/10.,
+        'eps_iter': 2. / 256.,
+        'clip_min': clip_min,
+        'clip_max': clip_max,
+        'nb_iter': 10,
+        'y_target': y_target
+    }
+elif FLAGS.attack_method == 'FastGradientMethod':
+    print('apply '+is_target+'FGSM'+' for advtrain')
+    att = attacks.FastGradientMethod(wrap_ensemble)
+    att_params = {'eps': eps,
+                   'clip_min': clip_min,
+                   'clip_max': clip_max,
+        'y_target': y_target}
+
+adv_x = tf.stop_gradient(att.generate(model_input, **att_params))
+adv_output = model(adv_x)
+normal_output = model(model_input)
+
+
+def adv_train_loss(_y_true, _y_pred):
+    return (1-FLAGS.adv_ratio) * train_loss(_y_true, normal_output) + FLAGS.adv_ratio * train_loss(_y_true, adv_output)
+
+
+model.compile(
+        loss=adv_train_loss,
+        optimizer=Adam(lr=lr_schedule(0)),
+        metrics=['accuracy'])
 model.summary()
 
 
@@ -213,7 +250,10 @@ lr_scheduler = LearningRateScheduler(lr_schedule)
 callbacks = [checkpoint, lr_scheduler]
 
 
+
+
 # Run training, with data augmentation.
+
 print('Using real-time data augmentation.')
 # This will do preprocessing and realtime data augmentation:
 datagen = ImageDataGenerator(

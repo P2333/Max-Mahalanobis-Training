@@ -1,7 +1,7 @@
 clc
 clear all
 L=10;
-D=64;
+D=256;
 mean_var=1;
 
 mean_logits=zeros(L,D);

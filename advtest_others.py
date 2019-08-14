@@ -19,8 +19,7 @@ from utils.model import resnet_v1, resnet_v2
 import cleverhans.attacks as attacks
 from cleverhans.utils_tf import model_eval
 from utils.keras_wraper_ensemble import KerasModelWrapper
-from utils.utils_model_eval import model_eval_targetacc
-from sklearn.metrics import roc_auc_score
+from utils.utils_model_eval import model_eval_targetacc, model_eval_for_SPSA, model_eval_for_SPSA_targetacc
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -33,7 +32,6 @@ tf.app.flags.DEFINE_integer('version', 2, '')
 tf.app.flags.DEFINE_float('lr', 0.001, 'initial lr')
 tf.app.flags.DEFINE_bool('target', True, 'is target attack or not')
 tf.app.flags.DEFINE_bool('use_target', False, 'whether use target attack or untarget attack for adversarial training')
-tf.app.flags.DEFINE_integer('num_iter', 10, '')
 tf.app.flags.DEFINE_bool('use_ball', True, 'whether use ball loss or softmax')
 tf.app.flags.DEFINE_bool('use_MMLDA', True, 'whether use MMLDA or softmax')
 tf.app.flags.DEFINE_bool('use_advtrain', True, 'whether use advtraining or normal training')
@@ -46,9 +44,8 @@ tf.app.flags.DEFINE_bool('use_random', False, 'whether use random center or MMLD
 tf.app.flags.DEFINE_bool('use_dense', True, 'whether use extra dense layer in the network')
 tf.app.flags.DEFINE_bool('use_leaky', False, 'whether use leaky relu in the network')
 
-# For calculate AUC-scores
-tf.app.flags.DEFINE_bool('is_calculate_auc', False, 'whether to calculate auc scores')
-tf.app.flags.DEFINE_bool('is_auc_metric_softmax_for_MMC', False, 'whether use softmax to calculate auc metrics for MMC')
+tf.app.flags.DEFINE_float('CW_confidence', 1.0, 'the confidence for CW-L2 attacks')
+tf.app.flags.DEFINE_float('SPSA_epsilon', 8, 'the eps for SPSA attacks in 256 pixel values')
 
 # Load the dataset
 if FLAGS.dataset=='mnist':
@@ -152,12 +149,16 @@ if subtract_pixel_mean:
     x_train_mean = np.mean(x_train, axis=0)
     x_train -= x_train_mean
     x_test -= x_train_mean
-    clip_min -= np.max(x_train_mean)
-    clip_max -= np.min(x_train_mean)
+    clip_min -= x_train_mean
+    clip_max -= x_train_mean
+print (np.min(x_train_mean))
+print (np.max(x_train_mean))
 
 # Convert class vectors to binary class matrices.
 y_train = keras.utils.to_categorical(y_train, num_class)
+y_test_index = np.squeeze(np.copy(y_test).astype('int32'))
 y_test = keras.utils.to_categorical(y_test, num_class)
+y_test_target_index = np.squeeze(np.copy(y_test_target).astype('int32'))
 y_test_target = keras.utils.to_categorical(y_test_target, num_class)
 
 
@@ -234,98 +235,174 @@ wrap_ensemble = KerasModelWrapper(model, num_class=num_class)
 
 model.load_weights(filepath_dir)
 
-
 # Initialize the attack method
-if FLAGS.attack_method == 'MadryEtAl':
-    att = attacks.MadryEtAl(wrap_ensemble)
-elif FLAGS.attack_method == 'FastGradientMethod':
-    att = attacks.FastGradientMethod(wrap_ensemble)
-elif FLAGS.attack_method == 'MomentumIterativeMethod':
-    att = attacks.MomentumIterativeMethod(wrap_ensemble)
-elif FLAGS.attack_method == 'BasicIterativeMethod':
-    att = attacks.BasicIterativeMethod(wrap_ensemble)
-
-
-# Consider the attack to be constant
-eval_par = {'batch_size': FLAGS.batch_size}
-
-
-if FLAGS.is_calculate_auc:
-    # Calculate model preds for clean inputs
-    avg_score_nor = np.array([])
-    nor_indicator = np.ones((1000,), dtype=int)
-    for i in range(10):
-        avg_score_nor_batch = sess.run(tf.reduce_max(model(x_place),axis=-1), feed_dict={x_place:x_test[i*100:(i+1)*100]})
-        avg_score_nor = np.concatenate((avg_score_nor, avg_score_nor_batch), axis=0)
-        print('Calculate score for nor images with batch', i)
-
-    # Calculate model preds for adv inputs
-    eps_ = 8 / 256.0
+if FLAGS.attack_method == 'SaliencyMapMethod':
+    num_samples = 100
+    eval_par = {'batch_size': 1}
+    att = attacks.SaliencyMapMethod(wrap_ensemble, sess=sess)
+    att_params = {
+        'theta': 1.,
+        'gamma': 0.1,
+        'clip_min': clip_min,
+        'clip_max': clip_max,
+    }
+    adv_x = att.generate(x_place, **att_params)
+elif FLAGS.attack_method == 'CarliniWagnerL2': #Update on 2019.3.29
+    num_samples = 500
+    eval_par = {'batch_size': 10}
+    att = attacks.CarliniWagnerL2(wrap_ensemble, sess=sess)
     if FLAGS.target==False:
-        y_target = None
-    if FLAGS.attack_method == 'FastGradientMethod':
-        att_params = {'eps': eps_,
-                       'clip_min': clip_min,
-                       'clip_max': clip_max,
-                       'y_target': y_target}
+        att_params = {
+            'batch_size': 10,
+            'confidence': FLAGS.CW_confidence,
+            'learning_rate': 5e-3,
+            'binary_search_steps': 9,
+            'max_iterations': 1000,
+            'initial_const': 0.01,
+            'abort_early': True,
+            'clip_min': clip_min,
+            'clip_max': clip_max
+        }
     else:
-        att_params = {'eps': eps_,
-                        #'eps_iter': eps_*1.0/FLAGS.num_iter,
-                        #'eps_iter': 3.*eps_/FLAGS.num_iter,
-                        'eps_iter': 2. / 256.,
-                       'clip_min': clip_min,
-                       'clip_max': clip_max,
-                       'nb_iter': FLAGS.num_iter,
-                       'y_target': y_target}
-    adv_x = tf.stop_gradient(att.generate(x_place, **att_params))
-    preds = tf.reduce_max(model(adv_x),axis=-1)
-
-    if FLAGS.is_auc_metric_softmax_for_MMC==True:
-        preds = tf.reduce_max(tf.nn.softmax(model(adv_x)),axis=-1)
-
-    avg_score_adv = np.array([])
-    adv_indicator = np.zeros((1000,), dtype=int)
-    if FLAGS.target==True:
-        for i in range(10):
-            avg_score_adv_batch = sess.run(preds, feed_dict={x_place:x_test[i*100:(i+1)*100], y_target:y_test_target[i*100:(i+1)*100]})
-            avg_score_adv = np.concatenate((avg_score_adv, avg_score_adv_batch), axis=0)
-            print('Calculate score for target attack images with batch', i)
+        att_params = {
+            'batch_size': 10,
+            'confidence': FLAGS.CW_confidence,
+            'y_target': y_target,
+            'learning_rate': 5e-3,
+            'binary_search_steps': 9,
+            'max_iterations': 1000,
+            'initial_const': 0.01,
+            'abort_early': True,
+            'clip_min': clip_min,
+            'clip_max': clip_max
+        }
+    if FLAGS.use_MMLDA == True and FLAGS.use_ball == True:
+        is_MMC = True
     else:
-        for i in range(10):
-            avg_score_adv_batch = sess.run(preds, feed_dict={x_place:x_test[i*100:(i+1)*100]})
-            avg_score_adv = np.concatenate((avg_score_adv, avg_score_adv_batch), axis=0)
-            print('Calculate score for untarget attack images with batch', i)
+        is_MMC = False
+    adv_x = att.generate(x_place, is_MMC=is_MMC, **att_params)
+elif FLAGS.attack_method == 'ElasticNetMethod':
+    num_samples = 1000
+    eval_par = {'batch_size': 100}
+    att = attacks.ElasticNetMethod(wrap_ensemble, sess=sess)
+    att_params = {
+        'batch_size': 100,
+        'confidence': 0.1,
+        'learning_rate': 0.01,
+        'binary_search_steps': 1,
+        'max_iterations': 1000,
+        'initial_const': 1.0,
+        'beta': 1e-2,
+        'fista': True,
+        'decision_rule': 'EN',
+        'clip_min': clip_min,
+        'clip_max': clip_max
+    }
+    adv_x = att.generate(x_place, **att_params)
+elif FLAGS.attack_method == 'DeepFool':
+    num_samples = 1000
+    eval_par = {'batch_size': 1}
+    att = attacks.DeepFool(wrap_ensemble, sess=sess)
+    att_params = {
+        'max_iter': 10, 
+        'clip_min': clip_min, 
+        'clip_max': clip_max,
+        'nb_candidate': 1
+    }
+    adv_x = att.generate(x_place, **att_params)
+elif FLAGS.attack_method == 'LBFGS':
+    num_samples = 1000
+    eval_par = {'batch_size': 1}
+    att = attacks.LBFGS(wrap_ensemble, sess=sess)
+    clip_min = np.mean(clip_min)
+    clip_max = np.mean(clip_max)
+    att_params = {
+        'y_target': y_target,
+        'batch_size': 1,
+        'binary_search_steps': 1,
+        'max_iterations': 100,
+        'initial_const': 1.0,
+        'clip_min': clip_min,
+        'clip_max': clip_max
+    }
+    adv_x = att.generate(x_place, **att_params)
+elif FLAGS.attack_method == 'SPSA': #Update on 2019.3.29
+    num_samples = 1000
+    eval_par = {'batch_size': 1}
+    x = tf.placeholder(tf.float32, shape=(1, 32, 32, 3))
+    y_index = tf.placeholder(tf.uint8, shape=())
+    if FLAGS.target:
+        y_target_index = tf.placeholder(tf.uint8, shape=())
+    else:
+        y_target_index = None
+    att = attacks.SPSA(wrap_ensemble, sess=sess)
+    if FLAGS.use_MMLDA == True and FLAGS.use_ball == True:
+        is_MMC = True
+    else:
+        is_MMC = False
+    adv_x = att.generate(x, y_index, y_target=y_target_index, epsilon=FLAGS.SPSA_epsilon / 256., num_steps=10,
+                 is_targeted=FLAGS.target, early_stop_loss_threshold=None,
+                 learning_rate=0.01, delta=0.01, batch_size=128, spsa_iters=1,
+                 is_debug=False, is_MMC=is_MMC)
 
-    score_all = np.concatenate((avg_score_nor,avg_score_adv), axis=0)
-    indicator_all = np.concatenate((nor_indicator,adv_indicator), axis=0)
-    print('AUC score is', roc_auc_score(indicator_all, score_all))
 
-else:
-    for eps in range(4):
-        eps_ = (eps+1) * 8
-        print('eps is %d'%eps_)
-        eps_ = eps_ / 256.0
-        if FLAGS.target==False:
-            y_target = None
-        if FLAGS.attack_method == 'FastGradientMethod':
-            att_params = {'eps': eps_,
-                       'clip_min': clip_min,
-                       'clip_max': clip_max,
-                       'y_target': y_target}
-        else:
-            att_params = {'eps': eps_,
-                        #'eps_iter': eps_*1.0/FLAGS.num_iter,
-                        #'eps_iter': 3.*eps_/FLAGS.num_iter,
-                        'eps_iter': 2. / 256.,
-                       'clip_min': clip_min,
-                       'clip_max': clip_max,
-                       'nb_iter': FLAGS.num_iter,
-                       'y_target': y_target}
-        adv_x = tf.stop_gradient(att.generate(x_place, **att_params))
-        preds = model(adv_x)
-        if FLAGS.target==False:
-            acc = model_eval(sess, x_place, y_place, preds, x_test, y_test, args=eval_par)
-            print('adv_acc: %.3f' %acc)
-        else:
-            acc = model_eval_targetacc(sess, x_place, y_place, y_target, preds, x_test, y_test, y_test_target, args=eval_par)
-            print('adv_acc_target: %.3f' %acc)
+
+preds = wrap_ensemble.get_probs(adv_x)
+if FLAGS.attack_method == 'LBFGS':
+    print(model_eval_targetacc(
+        sess,
+        x_place,
+        y_place,
+        y_target,
+        preds,
+        x_test[:num_samples],
+        y_test[:num_samples],
+        y_test_target[:num_samples],
+        args=eval_par))
+elif FLAGS.attack_method == 'SPSA':
+    if FLAGS.target==False:
+        acc = model_eval_for_SPSA(
+        sess, 
+        x, 
+        y_place, 
+        y_index, 
+        preds, 
+        x_test[:num_samples], 
+        y_test_index[:num_samples], 
+        y_test[:num_samples],
+        args=eval_par)
+        print('adv_acc: %.3f' %acc)
+    else:
+        acc = model_eval_for_SPSA_targetacc(
+        sess, 
+        x, 
+        y_place, 
+        y_index, 
+        y_target_index,
+        preds, 
+        x_test[:num_samples], 
+        y_test_index[:num_samples], 
+        y_test[:num_samples],
+        y_test_target_index[:num_samples],
+        args=eval_par)
+        print('adv_acc_target: %.3f' %acc)
+elif FLAGS.attack_method == 'CarliniWagnerL2':
+    l2dis_test = np.zeros((num_samples,))
+    reshape_dis = tf.reshape(x_place - adv_x, shape = [-1, 3072])
+    if FLAGS.target==False:
+        for i in range(int(num_samples/10)):
+            l2dis_test[i*10:(i+1)*10]=sess.run(tf.norm(reshape_dis, ord=2, axis=-1), feed_dict={x_place: x_test[i*10:(i+1)*10], \
+                y_place: y_test[i*10:(i+1)*10]})
+            print('Predict batch for test ', i, ', l2dis_mean is ', np.mean(l2dis_test[i*10:(i+1)*10]))
+        print('Total l2dismean is ',np.mean(l2dis_test))
+        acc = model_eval(sess, x_place, y_place, preds, x_test[:num_samples], y_test[:num_samples], args=eval_par)
+        print('adv_acc: %.3f' %acc)
+    else:
+        for i in range(int(num_samples/10)):
+            l2dis_test[i*10:(i+1)*10]=sess.run(tf.norm(reshape_dis, ord=2, axis=-1), feed_dict={x_place: x_test[i*10:(i+1)*10], \
+                y_place: y_test[i*10:(i+1)*10], y_target: y_test_target[i*10:(i+1)*10]})
+            print('Predict batch for test ', i, ', l2dis_mean is ', np.mean(l2dis_test[i*10:(i+1)*10]))
+        print('Total l2dismean is ',np.mean(l2dis_test))
+        acc = model_eval_targetacc(sess, x_place, y_place, y_target, preds, x_test[:num_samples], y_test[:num_samples], y_test_target[:num_samples], args=eval_par)
+        print('adv_acc_target: %.3f' %acc)
+

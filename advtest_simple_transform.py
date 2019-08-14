@@ -27,7 +27,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_integer('batch_size', 50, 'batch_size for attack')
 tf.app.flags.DEFINE_string('optimizer', 'Adam', '')
 tf.app.flags.DEFINE_float('mean_var', 10, 'parameter in MMLDA')
-tf.app.flags.DEFINE_string('attack_method', 'FastGradientMethod', '')
+tf.app.flags.DEFINE_string('attack_method', 'gaussian', '')
 tf.app.flags.DEFINE_string('attack_method_for_advtrain', 'FastGradientMethod', '')
 tf.app.flags.DEFINE_integer('version', 2, '')
 tf.app.flags.DEFINE_float('lr', 0.001, 'initial lr')
@@ -46,9 +46,7 @@ tf.app.flags.DEFINE_bool('use_random', False, 'whether use random center or MMLD
 tf.app.flags.DEFINE_bool('use_dense', True, 'whether use extra dense layer in the network')
 tf.app.flags.DEFINE_bool('use_leaky', False, 'whether use leaky relu in the network')
 
-# For calculate AUC-scores
-tf.app.flags.DEFINE_bool('is_calculate_auc', False, 'whether to calculate auc scores')
-tf.app.flags.DEFINE_bool('is_auc_metric_softmax_for_MMC', False, 'whether use softmax to calculate auc metrics for MMC')
+
 
 # Load the dataset
 if FLAGS.dataset=='mnist':
@@ -206,13 +204,13 @@ else:
 
 
 if FLAGS.use_MMLDA==True:
-    print('Using MMLDA')
+    print('Using MMT Training Scheme')
     new_layer = Lambda(MMLDA_layer)
     predictions = new_layer(final_features)
     model = Model(input=model_input, output=predictions)
     use_ball_=''
     if FLAGS.use_ball==False:
-        print('Using softmax function')
+        print('Using softmax function (MMLDA)')
         use_ball_='_softmax'
     filepath_dir = dirr+'resnet32v'+str(version)+'_meanvar'+str(mean_var) \
                                                                 +'_'+FLAGS.optimizer \
@@ -235,97 +233,34 @@ wrap_ensemble = KerasModelWrapper(model, num_class=num_class)
 model.load_weights(filepath_dir)
 
 
-# Initialize the attack method
-if FLAGS.attack_method == 'MadryEtAl':
-    att = attacks.MadryEtAl(wrap_ensemble)
-elif FLAGS.attack_method == 'FastGradientMethod':
-    att = attacks.FastGradientMethod(wrap_ensemble)
-elif FLAGS.attack_method == 'MomentumIterativeMethod':
-    att = attacks.MomentumIterativeMethod(wrap_ensemble)
-elif FLAGS.attack_method == 'BasicIterativeMethod':
-    att = attacks.BasicIterativeMethod(wrap_ensemble)
+if FLAGS.attack_method == 'Rotation':
+    datagen = ImageDataGenerator(
+        rotation_range=30)
 
+    data_generate=datagen.flow(x_test, y_test, batch_size=100)
 
-# Consider the attack to be constant
-eval_par = {'batch_size': FLAGS.batch_size}
-
-
-if FLAGS.is_calculate_auc:
-    # Calculate model preds for clean inputs
-    avg_score_nor = np.array([])
-    nor_indicator = np.ones((1000,), dtype=int)
-    for i in range(10):
-        avg_score_nor_batch = sess.run(tf.reduce_max(model(x_place),axis=-1), feed_dict={x_place:x_test[i*100:(i+1)*100]})
-        avg_score_nor = np.concatenate((avg_score_nor, avg_score_nor_batch), axis=0)
-        print('Calculate score for nor images with batch', i)
-
-    # Calculate model preds for adv inputs
-    eps_ = 8 / 256.0
-    if FLAGS.target==False:
-        y_target = None
-    if FLAGS.attack_method == 'FastGradientMethod':
-        att_params = {'eps': eps_,
-                       'clip_min': clip_min,
-                       'clip_max': clip_max,
-                       'y_target': y_target}
-    else:
-        att_params = {'eps': eps_,
-                        #'eps_iter': eps_*1.0/FLAGS.num_iter,
-                        #'eps_iter': 3.*eps_/FLAGS.num_iter,
-                        'eps_iter': 2. / 256.,
-                       'clip_min': clip_min,
-                       'clip_max': clip_max,
-                       'nb_iter': FLAGS.num_iter,
-                       'y_target': y_target}
-    adv_x = tf.stop_gradient(att.generate(x_place, **att_params))
-    preds = tf.reduce_max(model(adv_x),axis=-1)
-
-    if FLAGS.is_auc_metric_softmax_for_MMC==True:
-        preds = tf.reduce_max(tf.nn.softmax(model(adv_x)),axis=-1)
-
-    avg_score_adv = np.array([])
-    adv_indicator = np.zeros((1000,), dtype=int)
-    if FLAGS.target==True:
+    accuracy = 0
+    with sess.as_default():
         for i in range(10):
-            avg_score_adv_batch = sess.run(preds, feed_dict={x_place:x_test[i*100:(i+1)*100], y_target:y_test_target[i*100:(i+1)*100]})
-            avg_score_adv = np.concatenate((avg_score_adv, avg_score_adv_batch), axis=0)
-            print('Calculate score for target attack images with batch', i)
-    else:
+            test_batch = data_generate.next()
+            test_batch_data = test_batch[0]
+            test_batch_label = test_batch[1]
+            correct_preds = tf.equal(tf.argmax(y_place, axis=-1),
+                                     tf.argmax(model(x_place), axis=-1))
+            cur_corr_preds = correct_preds.eval(feed_dict={x_place: test_batch_data, y_place: test_batch_label})
+            accuracy += cur_corr_preds.sum()
+            print (accuracy)
+        accuracy /= 10.
+        print ('Accuracy is: ', accuracy)
+
+elif FLAGS.attack_method == 'Gaussian':
+    accuracy = 0
+    with sess.as_default():
         for i in range(10):
-            avg_score_adv_batch = sess.run(preds, feed_dict={x_place:x_test[i*100:(i+1)*100]})
-            avg_score_adv = np.concatenate((avg_score_adv, avg_score_adv_batch), axis=0)
-            print('Calculate score for untarget attack images with batch', i)
-
-    score_all = np.concatenate((avg_score_nor,avg_score_adv), axis=0)
-    indicator_all = np.concatenate((nor_indicator,adv_indicator), axis=0)
-    print('AUC score is', roc_auc_score(indicator_all, score_all))
-
-else:
-    for eps in range(4):
-        eps_ = (eps+1) * 8
-        print('eps is %d'%eps_)
-        eps_ = eps_ / 256.0
-        if FLAGS.target==False:
-            y_target = None
-        if FLAGS.attack_method == 'FastGradientMethod':
-            att_params = {'eps': eps_,
-                       'clip_min': clip_min,
-                       'clip_max': clip_max,
-                       'y_target': y_target}
-        else:
-            att_params = {'eps': eps_,
-                        #'eps_iter': eps_*1.0/FLAGS.num_iter,
-                        #'eps_iter': 3.*eps_/FLAGS.num_iter,
-                        'eps_iter': 2. / 256.,
-                       'clip_min': clip_min,
-                       'clip_max': clip_max,
-                       'nb_iter': FLAGS.num_iter,
-                       'y_target': y_target}
-        adv_x = tf.stop_gradient(att.generate(x_place, **att_params))
-        preds = model(adv_x)
-        if FLAGS.target==False:
-            acc = model_eval(sess, x_place, y_place, preds, x_test, y_test, args=eval_par)
-            print('adv_acc: %.3f' %acc)
-        else:
-            acc = model_eval_targetacc(sess, x_place, y_place, y_target, preds, x_test, y_test, y_test_target, args=eval_par)
-            print('adv_acc_target: %.3f' %acc)
+            correct_preds = tf.equal(tf.argmax(y_place, axis=-1),
+                                     tf.argmax(model(x_place+tf.random_normal([100,32,32,3],mean=0.0,stddev=0.05)), axis=-1))
+            cur_corr_preds = correct_preds.eval(feed_dict={x_place: x_test[i*100:(i+1)*100], y_place: y_test[i*100:(i+1)*100]})
+            accuracy += cur_corr_preds.sum()
+            print (accuracy)
+        accuracy /= 10.
+        print ('Accuracy is: ', accuracy)

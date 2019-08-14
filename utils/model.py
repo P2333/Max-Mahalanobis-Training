@@ -52,7 +52,7 @@ def resnet_layer(inputs,
     return x
 
 
-def resnet_v1(input, depth, num_classes=10, num_dims=64, use_BN=True):
+def resnet_v1(input, depth, num_classes=10, num_dims=64, use_BN=True, use_dense=True, use_leaky=False):
     """ResNet Version 1 Model builder [a]
     Stacks of 2 x (3 x 3) Conv2D-BN-ReLU
     Last ReLU is after the shortcut connection.
@@ -104,15 +104,21 @@ def resnet_v1(input, depth, num_classes=10, num_dims=64, use_BN=True):
                     activation=None,
                     batch_normalization=False)
             x = keras.layers.add([x, y])
-            x = Activation('relu')(x)
+            if use_leaky==True:
+                x = keras.layers.LeakyReLU(alpha=0.1)(x)
+            else:
+                x = Activation('relu')(x)
         num_filters *= 2
 
     # Add classifier on top.
     # v1 does not use BN after last shortcut connection-ReLU
     x = GlobalAveragePooling2D()(x)
     #final_features = Flatten()(x)
-    final_features = Dense(
-        num_dims, kernel_initializer='he_normal')(x)
+    if use_dense==True:
+        final_features = Dense(
+            num_dims, kernel_initializer='he_normal')(x)
+    else:
+        final_features = x
     logits = Dense(
         num_classes, kernel_initializer='he_normal')(final_features)
     outputs = Activation('softmax')(logits)
@@ -122,7 +128,7 @@ def resnet_v1(input, depth, num_classes=10, num_dims=64, use_BN=True):
     return model, inputs, outputs, logits, final_features
 
 
-def resnet_v2(input, depth, num_classes=10, num_dims=256, use_BN=True):
+def resnet_v2(input, depth, num_classes=10, num_dims=256, use_BN=True, use_dense=True, use_leaky=False):
     """ResNet Version 2 Model builder [b]
     Stacks of (1 x 1)-(3 x 3)-(1 x 1) BN-ReLU-Conv2D or also known as
     bottleneck layer
@@ -204,11 +210,19 @@ def resnet_v2(input, depth, num_classes=10, num_dims=256, use_BN=True):
     # v2 has BN-ReLU before Pooling
     if use_BN:
         x = BatchNormalization()(x)
-    x = Activation('relu')(x)
+
+    if use_leaky==True:
+        x = keras.layers.LeakyReLU(alpha=0.1)(x)
+    else:
+        x = Activation('relu')(x)
+        
     x = GlobalAveragePooling2D()(x)
     #final_features = Flatten()(x)
-    final_features = Dense(
-        num_dims, kernel_initializer='he_normal')(x)
+    if use_dense==True:
+        final_features = Dense(
+            num_dims, kernel_initializer='he_normal')(x)
+    else:
+        final_features = x
     logits = Dense(
         num_classes, kernel_initializer='he_normal')(final_features)
     outputs = Activation('softmax')(logits)
