@@ -57,6 +57,16 @@ python advtrain.py --batch_size=50 --mean_var=10 --dataset=[dataset] --optimizer
 
 ## Evaluation codes
 
+The pretrained models are provided below for Resnet110 (n=18): 
+
+[MMC (CIFAR-10)](http://ml.cs.tsinghua.edu.cn/~tianyu/MMC/pretrained_models/MMC_mom_cifar10/model.200.h5)
+
+[MMC (CIFAR-100)](http://ml.cs.tsinghua.edu.cn/~tianyu/MMC/pretrained_models/MMC_mom_cifar100/model.200.h5)
+
+[MMC + adv-training (CIFAR-10)](http://ml.cs.tsinghua.edu.cn/~tianyu/MMC/pretrained_models/MMC_mom_advtrain_cifar10/model.180.h5)
+
+[MMC + adv-training (CIFAR-100)](http://ml.cs.tsinghua.edu.cn/~tianyu/MMC/pretrained_models/MMC_mom_advtrain_cifar100/model.180.h5).
+
 ### White-box L-infinity attack (PGD)
 In this setting, the attacking methods are usually iterative-based. For examples, the command of applying targeted PGD-10 to evade the models trained by the SCE loss is
 ```shell
