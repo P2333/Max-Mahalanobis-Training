@@ -33,7 +33,7 @@ Let `dataset` be `mnist`, `cifar10` or `cifar100`, the command for training mode
 ```shell
 python train.py --batch_size=50 --dataset=[dataset] --optimizer='mom' --lr=0.01 --version=2 --use_MMLDA=False --use_BN=True --use_dense=True --use_leaky=False
 ```
-Here the initial learning rate is `0.01`, the optimizer is `mom` and we use the `Resnet-v2` architecture proposed by [He et al. (2016)](https://arxiv.org/abs/1603.05027). The training epoch on MNIST is set as 40, on CIFAR-10 and CIFAR-100 is set as 180.
+Here the initial learning rate is `0.01`, the optimizer is `mom` and we use the `Resnet-v2` architecture proposed by [He et al. (2016)](https://arxiv.org/abs/1603.05027). The training epoch on MNIST is set as 40, on CIFAR-10 and CIFAR-100 is set as 200.
 
 ### Standard training with the MMC loss
 Similarly, let `dataset` be `mnist`, `cifar10` or `cifar100`, the command for training models with the MMC loss is
