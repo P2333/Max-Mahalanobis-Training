@@ -22,9 +22,9 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_integer('batch_size', 64, '')
 tf.app.flags.DEFINE_float('mean_var', 10, 'parameter in MMLDA')
-tf.app.flags.DEFINE_string('optimizer', 'Adam', '')
+tf.app.flags.DEFINE_string('optimizer', 'mom', '')
 tf.app.flags.DEFINE_integer('version', 1, '')
-tf.app.flags.DEFINE_float('lr', 0.001, 'initial lr')
+tf.app.flags.DEFINE_float('lr', 0.01, 'initial lr')
 tf.app.flags.DEFINE_integer('feature_dim', 256, '')
 tf.app.flags.DEFINE_bool('is_2d_demo', False, 'whether is a 2d demo on MNIST')
 tf.app.flags.DEFINE_bool('use_ball', True, 'whether use ball loss or softmax')
@@ -48,14 +48,14 @@ if FLAGS.dataset=='mnist':
     epochs_inter = [30,40]
 elif FLAGS.dataset=='cifar10':
     (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-    epochs = 180
+    epochs = 200
     num_class = 10
-    epochs_inter = [80,120]
+    epochs_inter = [100,150]
 elif FLAGS.dataset=='cifar100':
     (x_train, y_train), (x_test, y_test) = cifar100.load_data()
-    epochs = 180
+    epochs = 200
     num_class = 100
-    epochs_inter = [80,120]
+    epochs_inter = [100,150]
 else:
     print('Unknown dataset')
 
