@@ -25,12 +25,12 @@ from sklearn.metrics import roc_auc_score
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_integer('batch_size', 50, 'batch_size for attack')
-tf.app.flags.DEFINE_string('optimizer', 'Adam', '')
+tf.app.flags.DEFINE_string('optimizer', 'mom', '')
 tf.app.flags.DEFINE_float('mean_var', 10, 'parameter in MMLDA')
 tf.app.flags.DEFINE_string('attack_method', 'gaussian', '')
 tf.app.flags.DEFINE_string('attack_method_for_advtrain', 'FastGradientMethod', '')
 tf.app.flags.DEFINE_integer('version', 2, '')
-tf.app.flags.DEFINE_float('lr', 0.001, 'initial lr')
+tf.app.flags.DEFINE_float('lr', 0.01, 'initial lr')
 tf.app.flags.DEFINE_bool('target', True, 'is target attack or not')
 tf.app.flags.DEFINE_bool('use_target', False, 'whether use target attack or untarget attack for adversarial training')
 tf.app.flags.DEFINE_integer('num_iter', 10, '')
@@ -60,16 +60,16 @@ if FLAGS.dataset=='mnist':
 
 elif FLAGS.dataset=='cifar10':
     (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-    epochs = 180
+    epochs = 200
     num_class = 10
-    epochs_inter = [80,120]
+    epochs_inter = [100,150]
     x_place = tf.placeholder(tf.float32, shape=(None, 32, 32, 3))
 
 elif FLAGS.dataset=='cifar100':
     (x_train, y_train), (x_test, y_test) = cifar100.load_data()
-    epochs = 180
+    epochs = 200
     num_class = 100
-    epochs_inter = [80,120]
+    epochs_inter = [100,150]
     x_place = tf.placeholder(tf.float32, shape=(None, 32, 32, 3))
 
 else:
