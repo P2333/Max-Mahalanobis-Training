@@ -31,28 +31,28 @@ In the following, we first provide the codes for training. After that, the evalu
 
 Let `dataset` be `mnist`, `cifar10` or `cifar100`, the command for training models with the SCE loss is
 ```shell
-python train.py --batch_size=50 --dataset=[dataset] --optimizer='Adam' --lr=0.001 --version=2 --use_MMLDA=False --use_BN=True --use_dense=True --use_leaky=False
+python train.py --batch_size=50 --dataset=[dataset] --optimizer='mom' --lr=0.01 --version=2 --use_MMLDA=False --use_BN=True --use_dense=True --use_leaky=False
 ```
-Here the initial learning rate is `0.001`, the optimizer is `Adam` and we use the `Resnet-v2` architecture proposed by [He et al. (2016)](https://arxiv.org/abs/1603.05027). The training epoch on MNIST is set as 40, on CIFAR-10 and CIFAR-100 is set as 180.
+Here the initial learning rate is `0.01`, the optimizer is `mom` and we use the `Resnet-v2` architecture proposed by [He et al. (2016)](https://arxiv.org/abs/1603.05027). The training epoch on MNIST is set as 40, on CIFAR-10 and CIFAR-100 is set as 180.
 
 ### Standard training with the MMC loss
 Similarly, let `dataset` be `mnist`, `cifar10` or `cifar100`, the command for training models with the MMC loss is
 ```shell
-python train.py --batch_size=50 --mean_var=10 --dataset=[dataset] -optimizer='Adam' --lr=0.001 --version=2 --use_MMLDA=True --use_ball=True --use_BN=True --use_random=False --use_dense=True --use_leaky=False
+python train.py --batch_size=50 --mean_var=10 --dataset=[dataset] -optimizer='mom' --lr=0.01 --version=2 --use_MMLDA=True --use_ball=True --use_BN=True --use_random=False --use_dense=True --use_leaky=False
 ```
 Here the basic training setting, e.g., learning rate and optimizer are the same as them for the SCE loss. The `meanvar` parameter is the $C_{MM}$ of the MMC loss in the paper. When the bool flag `use_ball` is False, the command run the training with the MMLDA loss.
 
 ### Adversarial training with the SCE loss
 For the adversarial training, we apply the most widely studied PGD-based method proposed by [Madry et al. (2017)](https://arxiv.org/abs/1706.06083).
 ```shell
-python advtrain.py --batch_size=50 --dataset=[dataset] --optimizer='Adam' --lr=0.001 --version=2 --adv_ratio=1.0 --use_MMLDA=False --use_ball=False --use_target=False --attack_method='MadryEtAl' --use_BN=True --use_random=False
+python advtrain.py --batch_size=50 --dataset=[dataset] --optimizer='mom' --lr=0.01 --version=2 --adv_ratio=1.0 --use_MMLDA=False --use_ball=False --use_target=False --attack_method='MadryEtAl' --use_BN=True --use_random=False
 ```
 Here the `adv_ratio` is set as 1, which means we only use adversarial examples in the training phase as suggested in previous work. The bool flag `use_target` indicates whether uses targeted attack or untargeted attack when crafting adversarial examples for training.
 
 ### Adversarial training with the MMC loss
 The adversarial training command is similar for the MMC loss
 ```shell
-python advtrain.py --batch_size=50 --mean_var=10 --dataset=[dataset] --optimizer='Adam' --lr=0.001 --version=2 --adv_ratio=1.0 --use_MMLDA=True --use_ball=True --use_target=True --attack_method='MadryEtAl' --use_BN=True --use_random=False
+python advtrain.py --batch_size=50 --mean_var=10 --dataset=[dataset] --optimizer='mom' --lr=0.01 --version=2 --adv_ratio=1.0 --use_MMLDA=True --use_ball=True --use_target=True --attack_method='MadryEtAl' --use_BN=True --use_random=False
 ```
 
 ## Evaluation codes
