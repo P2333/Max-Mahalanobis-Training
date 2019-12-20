@@ -6,7 +6,7 @@ Technical details are specified in:
 
 Tianyu Pang, Chao Du and Jun Zhu
 
-[Rethinking Softmax Cross-Entropy Loss for Adversarial Robustness](https://arxiv.org/pdf/1905.10626.pdf)
+[Rethinking Softmax Cross-Entropy Loss for Adversarial Robustness](https://arxiv.org/pdf/1905.10626.pdf) (ICLR 2020)
 
 Tianyu Pang, Kun Xu, Yinpeng Dong, Chao Du, Ning Chen and Jun Zhu
 
