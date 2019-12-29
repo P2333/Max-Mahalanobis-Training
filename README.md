@@ -68,9 +68,9 @@ The pretrained models are provided below for Resnet110 (n=18):
 [MMC + adv-training (CIFAR-100)](http://ml.cs.tsinghua.edu.cn/~tianyu/MMC/pretrained_models/MMC_mom_advtrain_cifar100/model.180.h5).
 
 ### White-box L-infinity attack (PGD)
-In this setting, the attacking methods are usually iterative-based. For examples, the command of applying targeted PGD-10 to evade the models trained by the SCE loss is
+In this setting, the attacking methods are usually iterative-based. For examples, the command of applying targeted PGD-10 to evade the models trained by the MMC loss is
 ```shell
-python advtest_iterative.py --batch_size=50 --attack_method='MadryEtAl' --attack_method_for_advtrain=None --dataset=[dataset] --target=True --num_iter=10 --use_ball=False --use_MMLDA=False --use_advtrain=False --epoch=[epoch] --use_BN=True --normalize_output_for_ball=True --use_random=False --use_target=False
+python advtest_iterative.py --batch_size=50 --attack_method='MadryEtAl' --attack_method_for_advtrain=None --dataset=[dataset] --target=True --num_iter=10 --use_ball=True --use_MMLDA=True --use_advtrain=False --epoch=[epoch] --use_BN=True --normalize_output_for_ball=True --use_random=False --use_target=False
 ```
 Here `attack_method` could be 'MadryEtAl' (PGD), 'FastGradientMethod' (FGSM), 'MomentumIterativeMethod' (MIM) and 'BasicIterativeMethod' (BIM). The `target` indicates whether use targeted or untargeted attack; `num_iter` is the iteration steps of the performed attacks; `epoch` is the epoch of the checkpoint to load; `normalize_output_for_ball` is a bool flag to decide whether apply a softmax function to return predictions in the inference phase.
 
