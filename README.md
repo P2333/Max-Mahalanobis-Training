@@ -1,5 +1,5 @@
 # Max-Mahalanobis Training
-Max-Mahalanobis Training (MMT) is a novel training method and a strong adversarial defense, which can learn more robust models with state-of-the-art robustness without extra computational cost.
+Max-Mahalanobis Training (MMT) is a novel training method, which can learn more robust models without hurting clean accuracy and with little extra computational cost.
 Technical details are specified in:
 
 [Max-Mahalanobis Linear Discriminant Analysis Networks](http://proceedings.mlr.press/v80/pang18a/pang18a.pdf) (ICML 2018)
