@@ -226,10 +226,18 @@ def adv_train_loss(_y_true, _y_pred):
     return (1-FLAGS.adv_ratio) * train_loss(_y_true, normal_output) + FLAGS.adv_ratio * train_loss(_y_true, adv_output)
 
 
-model.compile(
-        loss=adv_train_loss,
-        optimizer=Adam(lr=lr_schedule(0)),
-        metrics=['accuracy'])
+if FLAGS.optimizer=='Adam':
+    model.compile(
+            loss=adv_train_loss,
+            optimizer=Adam(lr=lr_schedule(0)),
+            metrics=['accuracy'])
+    print('Using Adam optimizer')
+elif FLAGS.optimizer=='mom':
+    model.compile(
+            loss=adv_train_loss,
+            optimizer=SGD(lr=lr_schedule(0), momentum=0.9),
+            metrics=['accuracy'])
+    print('Using momentum optimizer')
 model.summary()
 
 
