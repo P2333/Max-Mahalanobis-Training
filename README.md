@@ -25,6 +25,11 @@ We also thank the authors of [keras-resnet](https://github.com/raghakot/keras-re
 
 In the following, we first provide the codes for training. After that, the evaluation codes, such as attacking, are provided.
 
+## Demo of MM centers (mean_logits in the code)
+<img src="MMcenters.png" width="70%">
+
+This plot shows the MM centers under different number of classes `L`. 
+
 ## Training codes
 
 ### Standard training with the SCE loss
