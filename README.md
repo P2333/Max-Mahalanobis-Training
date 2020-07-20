@@ -79,7 +79,7 @@ python advtest_iterative.py --batch_size=50 --attack_method='MadryEtAl' --attack
 ```
 Here `attack_method` could be 'MadryEtAl' (PGD), 'FastGradientMethod' (FGSM), 'MomentumIterativeMethod' (MIM) and 'BasicIterativeMethod' (BIM). The `target` indicates whether use targeted or untargeted attack; `num_iter` is the iteration steps of the performed attacks; `epoch` is the epoch of the checkpoint to load; `normalize_output_for_ball` is a bool flag to decide whether apply a softmax function to return predictions in the inference phase.
 
-**Note that our evaluation is based on cleverhans: 2.1.0. To perform adaptive attack, please maually modify the function** ```model_loss``` **of the file** ```utils_tf.py```**by subtituting the softmax cross-entropy loss with other adaptive objectives, e.g.,** ```out=-tf.reduce_sum(logits * y, axis=-1)```.
+**Note that our evaluation is based on cleverhans: 2.1.0. To perform adaptive attack, please manually modify the function** ```model_loss``` **of the file** ```utils_tf.py```**by substituting the softmax cross-entropy loss with other adaptive objectives, e.g.,** ```out=-tf.reduce_sum(logits * y, axis=-1)```.
 
 When attacking the adversarially trained models, we should set the `use_advtrain` as True, and the `attack_method_for_advtrain` to be 'MadryEtAl' since we use the PGD-based adversarial training methods. The `use_target` is set the same as in the training codes. For examples, the command of applying untargeted PGD to evade the models adversarially trained by the MMC loss is
 ```shell
